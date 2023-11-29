@@ -1,0 +1,36 @@
+#! /bin/bash
+
+# Check if a URL is provided as an argument
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <URL>"
+  exit 1
+fi
+
+# Generate the URL for the Wayback Machine CDX API
+cdx_url="https://web.archive.org/cdx/search/cdx?url=$1/robots.txt&output=json"
+
+# Make a request to the Wayback Machine CDX API and capture the response
+response=$(curl -s -m 15 "$cdx_url")
+empty="[]"
+
+# Check if the response contains any snapshots
+if [[ "$response" != "$empty" || "$response"!="" ]]; then
+
+  # Extract the archive URLs from the response
+  timestamps=($(echo "$response" | jq -r '.[] | select(.[4] == "200") | "\(.[1])-\(.[5])"' | sort -t '-' -k2 -u | cut -d '-' -f 1))
+
+  res=''
+  res+=$(curl -s -m 15 "$1/robots.txt" | sed -E 's/[a-zA-Z-]+: {0,1}\*{0,1}(.*)/\1/')
+
+  # Loop through the archive URLs and fetch each snapshot
+  for timestamp in "${timestamps[@]}"; do
+    res+=$(curl -s -m 6 "https://web.archive.org/web/$timestamp/$1/robots.txt"|sed -E 's/[a-zA-Z-]+: {0,1}\*{0,1}(.*)/\1/'  )
+  done
+
+  # remove duplicate results
+  echo $res | tr ' ' "\n" | sort -u
+
+else
+  exit 1
+fi
+
